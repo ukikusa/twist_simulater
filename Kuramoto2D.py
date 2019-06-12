@@ -1,76 +1,108 @@
 # -*-coding: utf-8 -*-
+"""
+    Twist chain oscillator simulations.
 
-import numpy as np
-import scipy as sp
-from scipy import signal
-import image_analysis as im
+It is based on Poincare oscillators.
+Same model as proposed by {Myung, Jihwan, et al. "The choroid plexus is an important circadian clock component." Nature communications 9.1 (2018): 1062.}
+"""
+
 import sys
 
+import numpy as np
+from scipy import signal
 
-def kuramoto_2D(theta, K, Omega, Kernel, edge=False):
+
+def oscillator_2D(x, y, kernel, omega, A=1):
+    """Calculate fx and fy for Runge-Kutta.
+
+    $fx = -r(r-A) - omega * y + SIGMA _i!=j K_(ij) x_(j)$
+
+    Args:
+        x: array of x coordinates
+        y: array of y coordinates
+        kernel: [description]
+        omega: angular velocity
+        A: Standard state amplitude (default: {1})
+
+    Returns:
+        fx (= dx/dt), fy (= dy/dt)
+    """
     # K 結合定数.
-    Ctheta = np.cos(theta)
-    Stheta = np.sin(theta)
-    CthetaC = signal.convolve2d(Ctheta, Kernel, 'same', 'symm')
-    SthetaC = signal.convolve2d(Stheta, Kernel, 'same', 'symm')
-    # fill pad input arrays with fillvalue. (default)
-    # wrap circular boundary conditions.
-    # symm symmetrical boundary conditions.
-    if edge is True:
-        for i in np.arange(int(Kernel.shape[0] / 2)):
-            CthetaC[i, :] = signal.convolve2d(Ctheta, Kernel, 'same')
-    new_theta = Omega + K * (Ctheta * SthetaC - Stheta * CthetaC)
-    return new_theta
+    r = np.sqrt(np.square(x) * np.square(y))
+    field_x = signal.convolve2d(x, kernel, mode="same", boundary="fill", fillvalue=0)
+    field_y = signal.convolve2d(y, kernel, mode="same", boundary="fill", fillvalue=0)
+    fx = r * (A - r) - omega * y + field_x
+    fy = r * (A - r) + omega * x + field_y
+    return fx, fy
 
 
-def Runge_Kutta4(theta, K, Omega, h, Kernel):  # Runge-Kutta h:time step
-    k1 = kuramoto_2D(theta, K, Omega, Kernel)
-    k2 = kuramoto_2D(theta + 0.5 * h * k1, K, Omega, Kernel)
-    k3 = kuramoto_2D(theta + 0.5 * h * k2, K, Omega, Kernel)
-    k4 = kuramoto_2D(theta + h * k3, K, Omega, Kernel)
-    y = theta + (h / 6) * (k1 + 2 * k2 + 2 * k3 + k4)
-    return y
+def RK4(x, y, kernel, omega, A, h):
+    """Solve oscillator_2D by Runge–Kutta method.
+
+    Args:
+        x: array of x coordinates
+        y: array of y coordinates
+        kernel: [description]
+        omega: angular velocity
+        A: Standard state amplitude
+        h: Step width
+
+    Returns:
+        new_x, new_y
+    """
+    k1_x, k1_y = oscillator_2D(x, y, kernel, omega, A)
+    k2_x, k2_y = oscillator_2D(x + k1_x * 0.5 * h, y + k1_y * 0.5 * h, kernel, omega, A)
+    k3_x, k3_y = oscillator_2D(x + k2_x * 0.5 * h, y + k2_y * 0.5 * h, kernel, omega, A)
+    k4_x, k4_y = oscillator_2D(x + k3_x * h, y + k3_y * h, kernel, omega, A)
+    new_x, new_y = x + h / 6 * (k1_x + 2 * k2_x + 2 * k3_x + k4_x), y + h / 6 * (k1_y + 2 * k2_y + 2 * k3_y + k4_y)
+    return new_x, new_y
 
 
-def gaussian_kernel(ksize, sigma=False):  # ガウシアン行列作る．
-    if sigma is False:
-        sigma = 0.3 * ((ksize - 1) * 0.5 - 1) + 0.8
-        print('SIGMA = ' + str(sigma))
-    kernel_1d = np.empty((ksize, 1), dtype=np.float64)  # 1次元で作って拡張
-    for i in np.arange(ksize):
-        kernel_1d[i] = np.exp(-1 * np.power(i - (ksize - 1) * 0.5, 2) / (2 * np.power(sigma, 2)))
-    kernel_2d = kernel_1d.dot(kernel_1d.T)
-    kernel_2d = kernel_2d / np.sum(kernel_2d)
-    print(kernel_2d)
+def oscillator_2D_RK4(x, y, kernel, omega, A, h, step_count, save_step):
+    """"Solve oscillator_2D by Runge–Kutta method.
 
+    Args:
+        x: array of x coordinates
+        y: array of y coordinates
+        kernel: [description]
+        omega: angular velocity
+        A: Standard state amplitude
+        h: Step width
+        step_count: Number of calculations
+        save_step: Storage frequency(Save all if one.)
+
+    Returns:
+        xs, ys
+    """
+    r, c = x.shape
+    save_idx = range(0, step_count, save_step)
+    save = 0
+    xs = np.empty((len(save_idx), r, c), dtype=np.float64)
+    ys = np.empty_like(xs)
+    for i in range(step_count):
+        x, y = RK4(x, y, kernel, omega, A, h)
+        if save_idx[save] == i:
+            xs[save], ys[save] = x, y
+            save = save + 1
+    return xs, ys
 
 if __name__ == '__main__':
-    gaussian_kernel(ksize=5, sigma=False)
-    sys.exit()
-    roop = 1000  # ループ回数
-    h = 0.1  # 時間刻み
+    step_count = 1000  # ループ回数
+    h = 0.1  # 時間刻み huer
     R = 250  # 解析のサイズ
     C = 150  # 解析のサイズ
     # 細胞サイズを20μ，フロンドサイズを3mm * 5mm とした時．
-    K = 0.01  # k/n
-    Omega = 1 + 0.01 * np.random.randn(R, C)  # 角速度
-    theta = np.empty((roop, R, C))
-    theta[0] = np.random.rand(R, C) * 2 * np.pi  # 初期位相
-    # theta[0] = np.random.rand(R,C) * 0.5
-    # Omega = 1 + 0.3 * np.random.randn(R,C)# 角速度
-    # t = np.array((0,h,h*roop))
+    A = 1  # amplitude
+    omega = 2 * np.pi / 24  # + 0.01 * np.random.randn(R, C)  # 角速度
+    theta = np.random.rand(R, C) * 2 * np.pi  # 初期位相
+    x = np.cos(theta)
+    y = np.sin(theta)
+    kernel = np.ones((3, 3)) / 9
+    kernel[1, 1] = 0
 
-    area = 9  # 相互作用が何個隣まであるか
-    Kernel = np.ones((1 + area * 2, 1 + area * 2))
-    for i in np.arange(1, roop):
-        theta[i] = Runge_Kutta4(theta[i - 1], K, Omega, h, Kernel)
+    oscillator_2D_RK4(x, y, kernel, omega, A, h, step_count, save_step=1)
+    # theta_color = np.empty((theta.shape[0], theta.shape[1], theta.shape[2], 3), dtype=np.int16)
+    # for i in np.arange(roop):
+    #     theta_color[i] = im.make_color(theta[i])
 
-    print(np.max(theta))
-    theta = np.mod(theta, 2 * np.pi) / (2 * np.pi)
-    print(np.max(theta))
-
-    theta_color = np.empty((theta.shape[0], theta.shape[1], theta.shape[2], 3), dtype=np.int16)
-    for i in np.arange(roop):
-        theta_color[i] = im.make_color(theta[i])
-
-    im.save_imgs('LLLL_symm_area-9_k-0.01', theta_color)
+    # im.save_imgs('LLLL_symm_area-9_k-0.01', theta_color)
