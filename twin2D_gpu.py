@@ -1,15 +1,15 @@
 # -*-coding: utf-8 -*-
 """
-    Twist chain oscillator simulations.
+    Twist chain oscillator simulations. Version using GPU.
 
 It is based on Poincare oscillators.
 Same model as proposed by {Myung, Jihwan, et al. "The choroid plexus is an important circadian clock component." Nature communications 9.1 (2018): 1062.}
 """
 
-import sys
+# import sys
 
-import numpy as np
-from scipy import signal
+import chainer.functions
+import cupy as cp
 
 
 def oscillator_2D(x, y, kernel, omega, A=1):
@@ -27,9 +27,12 @@ def oscillator_2D(x, y, kernel, omega, A=1):
     Returns:
         fx (= dx/dt), fy (= dy/dt)
     """
-    r = np.linalg.norm(np.array([x, y]), axis=0)
-    field_x = signal.convolve2d(x, kernel, mode="same", boundary="fill", fillvalue=0)
-    field_y = signal.convolve2d(y, kernel, mode="same", boundary="fill", fillvalue=0)
+    r = cp.linalg.norm(cp.stack([x, y]), axis=0)
+    r_shape0, r_shape1 = r.shape
+    field_x = chainer.functions.convolution_2d(x.reshape(1, 1, r_shape0, r_shape1), kernel, pad=1)
+    field_y = chainer.functions.convolution_2d(y.reshape(1, 1, r_shape0, r_shape1), kernel, pad=1)
+    field_x = cp.array(field_x.array, dtype=cp.float64).reshape(r.shape)
+    field_y = cp.array(field_y.array, dtype=cp.float64).reshape(r.shape)
     fx = r * (A - r) - omega * y + field_x
     fy = r * (A - r) + omega * x + field_y
     return fx, fy
@@ -76,8 +79,8 @@ def oscillator_2D_RK4(x, y, kernel, omega, A, h, step_count, save_step):
     x_shape0, x_shape1 = x.shape
     save_idx = range(0, step_count, save_step)
     save = 0
-    xs = np.empty((len(save_idx), x_shape0, x_shape1), dtype=np.float64)
-    ys = np.empty_like(xs)
+    xs = cp.empty((len(save_idx), x_shape0, x_shape1), dtype=cp.float64)
+    ys = cp.empty_like(xs)
     for i in range(step_count):
         if save_idx[save] == i:
             xs[save], ys[save] = x, y
@@ -89,13 +92,24 @@ def oscillator_2D_RK4(x, y, kernel, omega, A, h, step_count, save_step):
     return xs, ys
 
 
-def xy2theta_amp(xs, ys, save=True):
-    theta = np.arctan(ys / xs) / np.pi * 0.5
+def xy2theta_amp(xs, ys, save="twin2d"):
+    """Function to convert Cartesian coordinates to polar coordinates.
+
+    Args:
+        xs: X coordinate
+        ys: Y coordinate
+        save: Save folder path.
+
+    Returns:
+        theta, r
+    """
+    theta = cp.arctan(ys / xs) / cp.pi * 0.5
     theta[theta < 0] = 1 + theta[theta < 0]
-    r = np.linalg.norm(np.array([xs, ys]), axis=0)
+    xy = cp.stack([xs, ys])
+    r = cp.linalg.norm(xy, axis=0)
     if save is not False:
-        np.save(save + "-theta.npy", theta)
-        np.save(save + "-r.npy", r)
+        cp.save(save + "-theta.npy", theta)
+        cp.save(save + "-r.npy", r)
     return theta, r
 
 if __name__ == '__main__':
@@ -105,25 +119,20 @@ if __name__ == '__main__':
     C = 150  # 解析のサイズ
     # 細胞サイズを20μ，フロンドサイズを3mm * 5mm とした時．
     A = 1  # amplitude
-    omega = 2 * np.pi / 24  # + 0.01 * np.random.randn(R, C)  # 角速度
-    theta = np.random.rand(R, C) * 0  # 初期位相
-    x = np.cos(theta).astype(np.float64) * 1
-    y = np.sin(theta).astype(np.float64) * 1
-    kernel = np.ones((3, 3)) * 10 ** (-9)
+    omega = 2 * cp.pi / 24  # + 0.01 * np.random.randn(R, C)  # 角速度
+    theta = cp.random.rand(R, C) * 0  # 初期位相
+    x = cp.cos(theta).astype(cp.float64) * 1
+    y = cp.sin(theta).astype(cp.float64) * 1
+    kernel = cp.ones((3, 3), dtype=cp.float64) * 10 ** (-6)
     kernel[1, 1] = 0
+    kernel = kernel.reshape(1, 1, 3, 3)
     save_step = 1
     for i in range(10):
         print(i)
         h = 0.1 * 0.5 ** i
-        omega = 2 * np.pi / 24 * h
+        omega = 2 * cp.pi / 24 * h
         save_step = int(1 / h)
         step_count = int(30 / h)
-        save = "/hdd1/Users/kenya/Labo/keisan/python/result/twist_test/" + str(int(1 / h)) + "h-step"
+        save = "/hdd1/Users/kenya/Labo/keisan/python/result/twist_test_30day_1hsave_-k-10-6_gpu/" + str(int(1 / h)) + "h-step"
         xs, ys = oscillator_2D_RK4(x, y, kernel, omega, A, h, step_count, save_step)
         xy2theta_amp(xs, ys, save=save)
-
-    # theta_color = np.empty((theta.shape[0], theta.shape[1], theta.shape[2], 3), dtype=np.int16)
-    # for i in np.arange(roop):
-    #     theta_color[i] = im.make_color(theta[i])
-
-    # im.save_imgs('LLLL_symm_area-9_k-0.01', theta_color)
