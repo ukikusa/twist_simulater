@@ -10,6 +10,7 @@ Same model as proposed by {Myung, Jihwan, et al. "The choroid plexus is an impor
 
 import chainer.functions
 import cupy as cp
+import os
 
 
 def oscillator_2D(x, y, kernel, omega, A=1):
@@ -108,6 +109,9 @@ def xy2theta_amp(xs, ys, save="twin2d"):
     xy = cp.stack([xs, ys])
     r = cp.linalg.norm(xy, axis=0)
     if save is not False:
+        dirctroy = os.path.dirname(save)
+        if not os.path.exists(dirctroy):
+            os.makedirs(dirctroy)
         cp.save(save + "-theta.npy", theta)
         cp.save(save + "-r.npy", r)
     return theta, r
