@@ -7,13 +7,14 @@ Same model as proposed by {Myung, Jihwan, et al. "The choroid plexus is an impor
 """
 
 # import sys
+import os
 
 import chainer.functions
 import cupy as cp
-import os
+import image_analysis as im
 
 
-def oscillator_2D(x, y, kernel, omega, A=1):
+def oscillator_2D(x, y, kernel, omega, lambda_, epsilon, A=1):
     """Calculate fx and fy for Runge-Kutta.
 
     $fx = -r(r-A) - omega * y + SIGMA _i!=j K_(ij) x_(j)$
@@ -34,12 +35,12 @@ def oscillator_2D(x, y, kernel, omega, A=1):
     field_y = chainer.functions.convolution_2d(y.reshape(1, 1, r_shape0, r_shape1), kernel, pad=1)
     field_x = cp.array(field_x.array, dtype=cp.float64).reshape(r.shape)
     field_y = cp.array(field_y.array, dtype=cp.float64).reshape(r.shape)
-    fx = r * (A - r) - omega * y + field_x
-    fy = r * (A - r) + omega * x + field_y
+    fx = (lambda_ * x - epsilon * y) * (A - r) - omega * y + field_x
+    fy = (lambda_ * y + epsilon * x) * (A - r) + omega * x + field_y
     return fx, fy
 
 
-def RK4(x, y, kernel, omega, A, h):
+def RK4(x, y, kernel, omega, lambda_, epsilon, A, h):
     """Solve oscillator_2D by Runge–Kutta method.
 
     Args:
@@ -53,15 +54,17 @@ def RK4(x, y, kernel, omega, A, h):
     Returns:
         new_x, new_y
     """
-    k1_x, k1_y = oscillator_2D(x, y, kernel, omega, A)
-    k2_x, k2_y = oscillator_2D(x + k1_x * 0.5 * h, y + k1_y * 0.5 * h, kernel, omega, A)
-    k3_x, k3_y = oscillator_2D(x + k2_x * 0.5 * h, y + k2_y * 0.5 * h, kernel, omega, A)
-    k4_x, k4_y = oscillator_2D(x + k3_x * h, y + k3_y * h, kernel, omega, A)
+    # omega = omega * h
+    # kernel = kernel * h
+    k1_x, k1_y = oscillator_2D(x, y, kernel, omega, lambda_, epsilon, A)
+    k2_x, k2_y = oscillator_2D(x + k1_x * 0.5 * h, y + k1_y * 0.5 * h, kernel, omega, lambda_, epsilon, A)
+    k3_x, k3_y = oscillator_2D(x + k2_x * 0.5 * h, y + k2_y * 0.5 * h, kernel, omega, lambda_, epsilon, A)
+    k4_x, k4_y = oscillator_2D(x + k3_x * h, y + k3_y * h, kernel, omega, lambda_, epsilon, A)
     new_x, new_y = x + h / 6 * (k1_x + 2 * k2_x + 2 * k3_x + k4_x), y + h / 6 * (k1_y + 2 * k2_y + 2 * k3_y + k4_y)
     return new_x, new_y
 
 
-def oscillator_2D_RK4(x, y, kernel, omega, A, h, step_count, save_step):
+def oscillator_2D_RK4(x, y, kernel, omega, lambda_, epsilon, A, h, step_count, save_step):
     """"Solve oscillator_2D by Runge–Kutta method.
 
     Args:
@@ -88,8 +91,7 @@ def oscillator_2D_RK4(x, y, kernel, omega, A, h, step_count, save_step):
             save = save + 1
             if save >= len(save_idx):
                 break
-
-        x, y = RK4(x, y, kernel, omega, A, h)
+        x, y = RK4(x, y, kernel, omega, lambda_, epsilon, A, h)
     return xs, ys
 
 
@@ -104,7 +106,7 @@ def xy2theta_amp(xs, ys, save="twin2d"):
     Returns:
         theta, r
     """
-    theta = cp.arctan(ys / xs) / cp.pi * 0.5
+    theta = cp.arctan2(ys, xs) / cp.pi * 0.5
     theta[theta < 0] = 1 + theta[theta < 0]
     xy = cp.stack([xs, ys])
     r = cp.linalg.norm(xy, axis=0)
@@ -114,6 +116,10 @@ def xy2theta_amp(xs, ys, save="twin2d"):
             os.makedirs(dirctroy)
         cp.save(save + "-theta.npy", theta)
         cp.save(save + "-r.npy", r)
+        color = im.make_colors(cp.asnumpy(theta))
+        if not os.path.exists(save + 'color_theta'):
+            os.makedirs(save + 'color_theta')
+        im.save_imgs(save + 'color_theta', color)
     return theta, r
 
 if __name__ == '__main__':
@@ -123,20 +129,21 @@ if __name__ == '__main__':
     C = 150  # 解析のサイズ
     # 細胞サイズを20μ，フロンドサイズを3mm * 5mm とした時．
     A = 1  # amplitude
+    lambda_ = 0.02
+    epsilon = 0.01  # twist h
     omega = 2 * cp.pi / 24  # + 0.01 * np.random.randn(R, C)  # 角速度
     theta = cp.random.rand(R, C) * 0  # 初期位相
     x = cp.cos(theta).astype(cp.float64) * 1
     y = cp.sin(theta).astype(cp.float64) * 1
-    kernel = cp.ones((3, 3), dtype=cp.float64) * 10 ** (-6)
+    kernel = cp.ones((3, 3), dtype=cp.float64) * 0.1
     kernel[1, 1] = 0
-    kernel = kernel.reshape(1, 1, 3, 3)
+    kernel = kernel.reshape(1, 1, kernel.shape[0], kernel.shape[1])
     save_step = 1
-    for i in range(10):
+    for i in range(5):
         print(i)
-        h = 0.1 * 0.5 ** i
-        omega = 2 * cp.pi / 24 * h
+        h = 0.5 ** i
         save_step = int(1 / h)
-        step_count = int(30 / h)
-        save = "/hdd1/Users/kenya/Labo/keisan/python/result/twist_test_30day_1hsave_-k-10-6_gpu/" + str(int(1 / h)) + "h-step"
-        xs, ys = oscillator_2D_RK4(x, y, kernel, omega, A, h, step_count, save_step)
+        step_count = int(30 * 24 / h)
+        save = "/hdd1/Users/kenya/Labo/keisan/python/result/twist_test/30day_1hsave_-k01_gpu_lambda002_epsilon001/" + str(int(1 / h)) + "h-step"
+        xs, ys = oscillator_2D_RK4(x, y, kernel, omega, lambda_, epsilon, A, h, step_count, save_step)
         xy2theta_amp(xs, ys, save=save)
