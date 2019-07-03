@@ -7,11 +7,14 @@ Same model as proposed by {Myung, Jihwan, et al. "The choroid plexus is an impor
 """
 
 # import sys
+import datetime
 import os
 
 import chainer.functions
 import cupy as cp
 import image_analysis as im
+import numpy as np
+import pandas as pd
 
 
 def oscillator_2D(x, y, kernel, omega, lambda_, epsilon, A=1):
@@ -31,8 +34,9 @@ def oscillator_2D(x, y, kernel, omega, lambda_, epsilon, A=1):
     """
     r = cp.linalg.norm(cp.stack([x, y]), axis=0)
     r_shape0, r_shape1 = r.shape
-    field_x = chainer.functions.convolution_2d(x.reshape(1, 1, r_shape0, r_shape1), kernel, pad=1)
-    field_y = chainer.functions.convolution_2d(y.reshape(1, 1, r_shape0, r_shape1), kernel, pad=1)
+    p = int(kernel.shape[2] * 0.5)
+    field_x = chainer.functions.convolution_2d(x.reshape(1, 1, r_shape0, r_shape1), kernel, pad=p)
+    field_y = chainer.functions.convolution_2d(y.reshape(1, 1, r_shape0, r_shape1), kernel, pad=p)
     field_x = cp.array(field_x.array, dtype=cp.float64).reshape(r.shape)
     field_y = cp.array(field_y.array, dtype=cp.float64).reshape(r.shape)
     fx = (lambda_ * x - epsilon * y) * (A - r) - omega * y + field_x
@@ -95,7 +99,7 @@ def oscillator_2D_RK4(x, y, kernel, omega, lambda_, epsilon, A, h, step_count, s
     return xs, ys
 
 
-def xy2theta_amp(xs, ys, save="twin2d"):
+def xy2theta_amp(xs, ys, save="twin2d", kernel=0, omega=0, lambda_=0, epsilon=0, A=0, h=0, step_count=0, save_step=0):
     """Function to convert Cartesian coordinates to polar coordinates.
 
     Args:
@@ -106,21 +110,34 @@ def xy2theta_amp(xs, ys, save="twin2d"):
     Returns:
         theta, r
     """
+    # Calculation theta and r
     theta = cp.arctan2(ys, xs) / cp.pi * 0.5
     theta[theta < 0] = 1 + theta[theta < 0]
     xy = cp.stack([xs, ys])
     r = cp.linalg.norm(xy, axis=0)
-    if save is not False:
-        dirctroy = os.path.dirname(save)
+    if save is not False:  # save something
+        dirctroy = os.path.join(save, datetime.datetime.today().strftime("%y%m%d%H%M"))
         if not os.path.exists(dirctroy):
             os.makedirs(dirctroy)
-        cp.save(save + "-theta.npy", theta)
-        cp.save(save + "-r.npy", r)
-        color = im.make_colors(cp.asnumpy(theta))
-        if not os.path.exists(save + 'color_theta'):
-            os.makedirs(save + 'color_theta')
-        im.save_imgs(save + 'color_theta', color)
+        cp.save(os.path.join(dirctroy, "theta.npy"), theta)
+        cp.save(os.path.join(dirctroy, "r.npy"), r)
+        # save theta by color
+        color = im.make_colors(cp.asnumpy(theta), black=-1)
+        im.save_imgs(save_folder=dirctroy, img=color, file_name='color_theta', stack=True)
+        # save r by color
+        r01 = cp.copy(r)
+        r01[r > 2] = 2
+        r01[r < 0.5] = 0.5
+        r01 = (r01 - 0.5) / 1.5
+        r01[r == 0] = -1
+        color = im.make_colors(cp.asnumpy(r01), black=-1)
+        im.save_imgs(save_folder=dirctroy, img=color, file_name='color_r05-20e-1', stack=True)
+        # save parameter
+        parameter = {'omega': omega, 'lambda': lambda_, 'epsilon': epsilon, 'A': A, 'h': h, 'step_count': step_count, 'save_step': save_step}
+        pd.DataFrame(parameter, index=['parameta', 'value']).to_csv(os.path.join(dirctroy, 'parameter.csv'))
+        kernel = np.savetxt('kernel.csv', cp.asnumpy(kernel.reshape(kernel.shape[2], kernel.shape[3])), delimiter=',')
     return theta, r
+
 
 if __name__ == '__main__':
     step_count = 240  # ループ回数
@@ -130,7 +147,7 @@ if __name__ == '__main__':
     # 細胞サイズを20μ，フロンドサイズを3mm * 5mm とした時．
     A = 1  # amplitude
     lambda_ = 0.02
-    epsilon = 0.01  # twist h
+    epsilon = -0.005  # twist h
     omega = 2 * cp.pi / 24  # + 0.01 * np.random.randn(R, C)  # 角速度
     theta = cp.random.rand(R, C) * 0  # 初期位相
     x = cp.cos(theta).astype(cp.float64) * 1
@@ -144,6 +161,6 @@ if __name__ == '__main__':
         h = 0.5 ** i
         save_step = int(1 / h)
         step_count = int(30 * 24 / h)
-        save = "/hdd1/Users/kenya/Labo/keisan/python/result/twist_test/30day_1hsave_-k01_gpu_lambda002_epsilon001/" + str(int(1 / h)) + "h-step"
+        save = os.path.join("/hdd1", "Users", "kenya", "Labo", "keisan", "python", "result", "twist_2d")
         xs, ys = oscillator_2D_RK4(x, y, kernel, omega, lambda_, epsilon, A, h, step_count, save_step)
-        xy2theta_amp(xs, ys, save=save)
+        xy2theta_amp(xs, ys, save=save, kernel=kernel, omega=omega, lambda_=lambda_, epsilon=epsilon, A=A, h=h, step_count=step_count, save_step=save_step)
