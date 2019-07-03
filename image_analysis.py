@@ -29,7 +29,17 @@ def read_imgs(img_folder, color=False, extension='tif'):  # 画像入ってい�
     return img
 
 
-def save_imgs(save_folder, img, file_name='', extension='tif', idx='ALL'):
+def save_imgs(save_folder, img, file_name='', extension='tif', idx='ALL', stack=True):
+    """Save images.
+
+    Args:
+        save_folder: This function can create folders.
+        img: numpy array
+        file_name: Serial numbers and extensions are added automatically.
+        extension: tif or png (default: {'tif'})
+        idx: Index of image to save. One-dimensional list. (default: {'ALL'})
+        stack: Whether to save as tif stack. Valid only for tif. (default: {True})
+    """
     # 画像スタックになっている配列から，save_folderに画像を保存．
     if idx == 'ALL':
         idx = np.arange(img.shape[0])
@@ -40,10 +50,15 @@ def save_imgs(save_folder, img, file_name='', extension='tif', idx='ALL'):
         os.makedirs(save_folder)
     if extension == 'png':  # pngなんだから非圧縮で保存しようよ
         for i in idx:
-            Image.fromarray(img[i]).save(os.path.join(save_folder, file_name + str(i).zfill(3) + '.' + extension))
-    else:  # tifはデフォルト非圧縮 jpgは圧縮される．
+            Image.fromarray(img[i]).save(os.path.join(save_folder, file_name + str(i).zfill(3) + '.png'))
+    elif extension == "tif" and not stack:  # tifはデフォルト非圧縮 jpgは圧縮される．
         for i in idx:
-            Image.fromarray(img[i]).save(os.path.join(save_folder, file_name + str(i).zfill(3) + '.' + extension))
+            Image.fromarray(img[i]).save(os.path.join(save_folder, file_name + str(i).zfill(3) + '.tif'))
+    elif extension == "tif" and stack:
+        stack = []
+        for i in idx:
+            stack.append(Image.fromarray(img[i]))
+        stack[0].save(os.path.join(save_folder, file_name + '.tif'), compression="tiff_deflate", save_all=True, append_images=stack[1:])
     print(str(save_folder) + 'に保存しました')
 
 
