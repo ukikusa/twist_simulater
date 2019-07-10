@@ -1,0 +1,23 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+pylint = "*"
+black = "*"
+flake8 = "*"
+
+[packages]
+numpy = "*"
+chainer = "*"
+pandas = "*"
+cupy-cuda90 = "*"
+opencv-python = "*"
+pillow = "*"
+
+[requires]
+python_version = "3.6"
+
+[pipenv]
+allow_prereleases = true
