@@ -181,6 +181,18 @@ def xy2theta_amp_save(
     return theta, r
 
 
+    def gaussian_kernel(ksize, sigma=False):  # ガウシアン行列作る．
+    if sigma is False:
+        sigma = 0.3 * ((ksize - 1) * 0.5 - 1) + 0.8
+        print('SIGMA = ' + str(sigma))
+    kernel_1d = np.empty((ksize, 1), dtype=np.float64)  # 1次元で作って拡張
+    for i in np.arange(ksize):
+        kernel_1d[i] = np.exp(-1 * np.power(i - (ksize - 1) * 0.5, 2) / (2 * np.power(sigma, 2)))
+    kernel_2d = kernel_1d.dot(kernel_1d.T)
+    kernel_2d = kernel_2d / np.sum(kernel_2d)
+    return kernel_2d
+
+
 if __name__ == "__main__":
     mask = os.path.join(
         "/hdd1",
@@ -200,7 +212,7 @@ if __name__ == "__main__":
     # 細胞サイズを20μ，フロンドサイズを3mm * 5mm とした時．
     A = 1  # amplitude
     lambda_ = 0.02
-    epsilon = -0.04  # twist h
+    epsilon = -0.005  # twist h
     omega = 2 * cp.pi / 25.5 + 0.01 * cp.random.randn(R, C)  # 角速度
     theta = cp.random.rand(R, C) * 0  # 初期位相
     x = cp.cos(theta).astype(cp.float64) * 15
