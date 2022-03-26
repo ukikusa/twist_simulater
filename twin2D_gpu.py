@@ -11,6 +11,7 @@ Same model as proposed by
 import datetime
 import os
 
+import chainer.cuda
 import chainer.functions
 import cupy as cp
 import cv2
@@ -20,7 +21,7 @@ import pandas as pd
 import image_analysis as im
 
 
-def oscillator_2D(x, y, kernel, omega, lambda_, epsilon, A=1, mask=False):
+def oscillator_2D(x, y, kernel, omega, lambda_, epsilon, A=1, mask=False, hill=1):
     """Calculate fx and fy for Runge-Kutta.
 
     $fx = -r(r-A) - omega * y + SIGMA _i!=j K_(ij) x_(j)$
@@ -38,6 +39,7 @@ def oscillator_2D(x, y, kernel, omega, lambda_, epsilon, A=1, mask=False):
     r = cp.linalg.norm(cp.stack([x, y]), axis=0)
     r_shape0, r_shape1 = r.shape
     p = int(kernel.shape[2] * 0.5)
+    kernel = cp.array(kernel)
     field_x = chainer.functions.convolution_2d(
         x.reshape(1, 1, r_shape0, r_shape1), kernel, pad=p
     )
@@ -49,8 +51,11 @@ def oscillator_2D(x, y, kernel, omega, lambda_, epsilon, A=1, mask=False):
     if mask is not False:
         field_x[mask == 0] = 0
         field_y[mask == 0] = 0
-    fx = (lambda_ * x - epsilon * y) * (A - r) - omega * y + field_x
-    fy = (lambda_ * y + epsilon * x) * (A - r) + omega * x + field_y
+    tmp = A - r
+    tmp = cp.power(cp.abs(tmp), hill)
+    tmp[cp.signbit(A - r)] = tmp[cp.signbit(A - r)] * -1
+    fx = (lambda_ * x - epsilon * y) * tmp - omega * y + field_x
+    fy = (lambda_ * y + epsilon * x) * tmp + omega * x + field_y
     return fx, fy
 
 
@@ -134,9 +139,12 @@ def xy2theta_amp_save(
     xy = cp.stack([xs, ys])
     r = cp.linalg.norm(xy, axis=0)
     if save is not False:  # save something
-        dirctroy = os.path.join(save, datetime.datetime.today().strftime("%y%m%d"))
+        # dirctroy = os.path.join(save, datetime.datetime.today().strftime("%y%m%d"))
+        dirctroy = save
         if not os.path.exists(dirctroy):
             os.makedirs(dirctroy)
+        theta = theta.astype(np.float16)
+        r = r.astype(np.float16)
         cp.save(os.path.join(dirctroy, "theta.npy"), theta)
         cp.save(os.path.join(dirctroy, "r.npy"), r)
         # 位相を色相に変換する．振幅が0のときは黒(明度0)にする．
@@ -146,10 +154,17 @@ def xy2theta_amp_save(
             save_folder=dirctroy, img=color, file_name="color_theta", stack=True
         )
         # save r by color
+        r = r.astype(cp.float16)
         r01 = cp.copy(r)
         print(r01.dtype)
-        r_max, r_min = cp.max(r), cp.min(r[r != 0])
-        r01 = (r01 - r_min) / (r_max - r_min) * 0.7
+        r_max = cp.max(r[-1, :, :])
+        r_min = cp.min(r[-1][r[-1] != 0])
+        # r_max = 25
+        r_min = cp.min(r[-1][r[-1] != 0])
+        r01 = r01 - r_min
+        r01 = r01 / (r_max - r_min)
+        r01 = r01 * 0.7
+        r01[r01 < 0] = 0
         r01[r == 0] = -1
         color = im.make_colors(cp.asnumpy(r01), black=-1)
         im.save_imgs(
@@ -181,15 +196,37 @@ def xy2theta_amp_save(
     return theta, r
 
 
-    def gaussian_kernel(ksize, sigma=False):  # ガウシアン行列作る．
+def gaussian_kernel(ksize, sigma=False):
+    """ガウシアン行列作る．
+
+    Args:
+        ksize (int): 行数
+        sigma (bool, optional): [description]. Defaults to False.
+
+    Returns:
+        [type]: [description]
+    """
     if sigma is False:
         sigma = 0.3 * ((ksize - 1) * 0.5 - 1) + 0.8
-        print('SIGMA = ' + str(sigma))
+        print("SIGMA = " + str(sigma))
     kernel_1d = np.empty((ksize, 1), dtype=np.float64)  # 1次元で作って拡張
     for i in np.arange(ksize):
-        kernel_1d[i] = np.exp(-1 * np.power(i - (ksize - 1) * 0.5, 2) / (2 * np.power(sigma, 2)))
+        kernel_1d[i] = np.exp(
+            -1 * np.power(i - (ksize - 1) * 0.5, 2) / (2 * np.power(sigma, 2))
+        )
     kernel_2d = kernel_1d.dot(kernel_1d.T)
     kernel_2d = kernel_2d / np.sum(kernel_2d)
+    return kernel_2d
+
+
+def kyori_nijo(ksize):
+    """距離の二条に反比例した行列作る. ksizeは奇数"""
+    kernel_1d = cp.abs(cp.arange(ksize) - ksize // 2)  # 1次元で作って拡張
+    xx, yy = cp.meshgrid(kernel_1d, kernel_1d)
+    kernel_2d = cp.square(xx) + cp.square(yy)
+    kernel_2d = kernel_2d.astype(cp.float64)
+    kernel_2d[kernel_2d.nonzero()] = 1 / kernel_2d[kernel_2d.nonzero()]
+    kernel_2d = kernel_2d / cp.sum(kernel_2d)
     return kernel_2d
 
 
@@ -265,4 +302,3 @@ if __name__ == "__main__":
             step_count=step_count,
             save_step=save_step,
         )
-

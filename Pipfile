@@ -12,9 +12,11 @@ flake8 = "*"
 numpy = "*"
 chainer = "*"
 pandas = "*"
-cupy-cuda90 = "*"
 opencv-python = "*"
 pillow = "*"
+cupy-cuda90 = "==7.5.0"
+pip = "*"
+matplotlib = "*"
 
 [requires]
 python_version = "3.6.6"
