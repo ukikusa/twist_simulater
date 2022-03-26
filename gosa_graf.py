@@ -2,8 +2,12 @@ import os
 
 import numpy as np
 
+os.chdir(
+    os.path.join(
+        "/hdd1", "Users", "kenya", "Labo", "keisan", "python", "result", "twist_test"
+    )
+)
 
-os.chdir(os.path.join('/hdd1', 'Users', 'kenya', 'Labo', 'keisan', 'python', "result", 'twist_test'))
 
 def r_theta_diff(path1, path2):
     r_10 = np.load(path1 + "r.npy")
@@ -16,10 +20,20 @@ def r_theta_diff(path1, path2):
     return np.sum(r_dis), np.sum(theta_dis)
 
 
-paths = ["10h-step-", "20h-step-", "40h-step-", "80h-step-", "160h-step-", "320h-step-", "640h-step-", "1280h-step-", "2560h-step-"]
+paths = [
+    "10h-step-",
+    "20h-step-",
+    "40h-step-",
+    "80h-step-",
+    "160h-step-",
+    "320h-step-",
+    "640h-step-",
+    "1280h-step-",
+    "2560h-step-",
+]
 result = np.empty((2, len(paths) - 1))
 for i in range(len(paths) - 1):
     result[0, i], result[1, i] = r_theta_diff(paths[i], paths[i + 1])
 
 
-np.savetxt('out.csv', result, delimiter=',')
+np.savetxt("out.csv", result, delimiter=",")
