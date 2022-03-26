@@ -1,22 +1,49 @@
 # twist_simulater
-このソフトはどんなもので、何ができるのかを書く
-合わせて、簡単なデモ（使用例）などスクリーンショットやGIFアニメで表示
 
-# Dependency
-pipenvの設定ファイル(Pipfile)を見てください．
-GUPを使用しない場合は cupy-cuda90 = "*" をコメントアウトしてください．  
+This code is a Python implementation of the twist model ([Myung et. al](https://www.nature.com/articles/s41467-018-03507-2#change-history)) with some modifications for the [paper](https://doi.org/10.1111/nph.17925).
+## Dependency
 
-# Setup
-セットアップ方法を書く。用意するハードウェアとソフトウェアをセットアップするためのコマンドを記載する
+- python3: check `Pipfile` for detail
+- library: check `Pipfile` for detail
 
-# Usage
-使い方。なるべく具体的に書く。サンプルも書く
+## Setup
 
-# License
-未定
+- Install Python
+- Donload or git clone this repository
+- Run Python script e.g. `python3 "xxxx.py"`
 
-# Authors
-作者を明示する。特に、他者が作成したコードを利用する場合は、そのコードのライセンスに従った上で、リポジトリのそれぞれのコードのオリジナルの作者が誰か分かるように明示する（私はそれが良いと思い自主的にしています）。
+## Papers
 
-# References
-参考にした情報源（サイト・論文）などの情報、リンク
+- An endogenous basis for synchronisation characteristics of the circadian rhythm in proliferating *Lemna minor* plants
+  Kenya Ueno, Shogo Ito, Tokitaka Oyama
+  *New Phytologist*, Volume233, Issue5, March 2022, Pages 2203-2215, [https://doi.org/10.1111/nph.17925](https://doi.org/10.1111/nph.17925)
+
+## Usage
+
+`oscillator_2D_RK4` in `twin2D_gpu`: Used for simulation.
+
+## Citation
+
+    @article{ueno2022endogenous,
+      title={An endogenous basis for synchronisation characteristics of the circadian rhythm in proliferating Lemna minor plants},
+      author={Ueno, Kenya and Ito, Shogo and Oyama, Tokitaka},
+      journal={New Phytologist},
+      volume={233},
+      number={5},
+      pages={2203--2215},
+      year={2022},
+      publisher={Wiley Online Library}
+    }
+
+## References
+
+    @article{myung2018choroid,
+    title={The choroid plexus is an important circadian clock component},
+    author={Myung, Jihwan and Schmal, Christoph and Hong, Sungho and Tsukizawa, Yoshiaki and Rose, Pia and Zhang, Yong and Holtzman, Michael J and De Schutter, Erik and Herzel, Hanspeter and Bordyugov, Grigory and others},
+    journal={Nature communications},
+    volume={9},
+    number={1},
+    pages={1--13},
+    year={2018},
+    publisher={Nature Publishing Group}
+    }
